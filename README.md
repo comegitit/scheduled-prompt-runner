@@ -1,5 +1,9 @@
 # Scheduled Prompt Runner - Project Blueprint
 
+## This app is a simple agentic Python project. It is meant to demonstrate my ability to create agentic AI apps, using the Anthropic Claude Sonnet API
+
+#
+
 ## 1. Problem Statement
 
 Recurring, well-defined analytical or research tasks (e.g. "summarize this
@@ -24,7 +28,7 @@ A minimal, single-purpose Python application that:
 The application is deliberately **not** an agent framework. It has no
 planning loop, no tool use, no memory between runs, and no dynamic prompt
 construction. Each run is a single, stateless, one-shot LLM call. All
-"intelligence" about *what* to ask lives in the prompt text file, which is
+"intelligence" about _what_ to ask lives in the prompt text file, which is
 treated as data, not code. This keeps the codebase small, auditable, and
 easy to extend without introducing unnecessary abstraction.
 
@@ -86,6 +90,7 @@ scheduled-prompt-runner/
 details, no email details.
 
 **Behavior:**
+
 1. Load environment variables from `.env`.
 2. Read the prompt text from `prompts/prompt_current.txt`. Fail clearly if
    missing or empty.
@@ -107,6 +112,7 @@ details, no email details.
 orchestration, no email logic.
 
 **Behavior:**
+
 - Read the API key from the environment.
 - Call the Anthropic Messages API with the given prompt as a single user
   message.
@@ -122,6 +128,7 @@ orchestration, no email logic.
 **Responsibility:** Send one email. No prompt logic, no orchestration.
 
 **Behavior:**
+
 - Read SMTP host, port, username, password, and recipient from the
   environment. Fail clearly if any required setting is missing.
 - Compose a plain-text (or markdown-as-text) email with the given subject
@@ -145,14 +152,14 @@ application - a setup utility only.
 
 ## 6. Dependencies
 
-| Dependency | Purpose |
-|---|---|
-| Python 3.11+ | Runtime |
-| `anthropic` (official Python SDK) | Claude API access |
-| `python-dotenv` | Loads `.env` into environment variables |
-| Windows Task Scheduler | OS-level scheduling (no Python dependency) |
-| SMTP-capable email account | Outbound mail (e.g. Gmail with an App Password) |
-| Anthropic API key | Required credential |
+| Dependency                        | Purpose                                         |
+| --------------------------------- | ----------------------------------------------- |
+| Python 3.11+                      | Runtime                                         |
+| `anthropic` (official Python SDK) | Claude API access                               |
+| `python-dotenv`                   | Loads `.env` into environment variables         |
+| Windows Task Scheduler            | OS-level scheduling (no Python dependency)      |
+| SMTP-capable email account        | Outbound mail (e.g. Gmail with an App Password) |
+| Anthropic API key                 | Required credential                             |
 
 No database, no web framework, no message queue, no containerization
 needed for this scope.
@@ -219,7 +226,7 @@ them:
 ## 10. Security Notes for Whoever Builds This
 
 - Store the API key and email password only in `.env`; verify `.env` is
-  in `.gitignore` *before* the first `git add`, not after.
+  in `.gitignore` _before_ the first `git add`, not after.
 - Use an app-specific password for the sending email account rather than
   the account's main password, if the provider supports it (e.g. Gmail
   App Passwords).
