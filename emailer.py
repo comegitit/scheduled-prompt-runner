@@ -1,5 +1,3 @@
-# SMTP email wrapper
-
 """
 emailer.py - Sends the generated output via email (SMTP).
 
