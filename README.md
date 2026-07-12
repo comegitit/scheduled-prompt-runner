@@ -1,235 +1,171 @@
-# Scheduled Prompt Runner - Project Blueprint
+# Scheduled Prompt Runner
 
-## This app is a simple agentic Python project. It is meant to demonstrate my ability to create agentic AI apps, using the Anthropic Claude Sonnet API
+A minimal, single-purpose Python application that runs a static prompt
+against the Claude API on a schedule and emails the result. Built as a
+deliberately lightweight companion to a larger agentic job-search
+pipeline, showcasing the same orchestration principles - IMAP ingestion,
+LLM scoring/generation, Task Scheduler automation - at a fraction of the
+complexity.
 
-#
+## Status
 
-## 1. Problem Statement
+- **Phase 1 (core loop):** Complete. Single prompt, manual test, scheduled
+  test, all proven end to end.
+- **Phase 2 (multiple prompts and schedules):** Complete, and exceeded
+  original scope. Three independently scheduled, functionally distinct
+  tasks - daily, weekly, monthly - each with real data behind it (live
+  web search, real inbox content), not just placeholder prompts.
+- **Phase 3 (multiple prompts chained within a single scheduled task):**
+  Not yet started. Planned next.
 
-Recurring, well-defined analytical or research tasks (e.g. "summarize this
-week's AI governance news," "check if a vendor's API model is being
-deprecated") currently require manually opening a chat interface, writing
-or re-pasting a prompt, and reading the result - every single time. There
-is no lightweight way to have a static, well-tuned prompt run on a
-schedule and deliver its output passively, without building or paying for
-a full automation platform.
+## What each task actually does
 
-## 2. Solution Overview
+| Task    | Schedule              | Data source                                                | Behavior                                                                                                                                      |
+| ------- | --------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Daily   | Every day, 5:00 AM    | Web search, restricted to `anthropic.com` and `openai.com` | Reports notable Anthropic/OpenAI news from the last 24 hours. Returns `NO_UPDATE` (no email sent) if nothing new.                             |
+| Weekly  | Sunday, 5:30 AM       | IMAP fetch of the `roy@ai-yyc.com` Inbox since last Sunday | Summarizes the week's emails, grouped by sender, flagging anything needing action. Returns `NO_UPDATE` if the inbox was empty for the window. |
+| Monthly | 1st of month, 6:00 AM | Web search, restricted to `docs.claude.com`                | Checks for new Claude model deprecation/retirement announcements in the last 30 days. Returns `NO_UPDATE` if none.                            |
 
-A minimal, single-purpose Python application that:
+All three prompts include an explicit anti-hallucination instruction:
+verify sources before answering, and prefer omission over a guess.
 
-1. Loads a static prompt from a text file.
-2. Sends that prompt to the Claude API.
-3. Saves the response as a timestamped markdown file.
-4. Emails the response to the user.
-5. Is triggered on a schedule by the operating system (Windows Task
-   Scheduler), not by any logic inside the app itself.
-
-The application is deliberately **not** an agent framework. It has no
-planning loop, no tool use, no memory between runs, and no dynamic prompt
-construction. Each run is a single, stateless, one-shot LLM call. All
-"intelligence" about _what_ to ask lives in the prompt text file, which is
-treated as data, not code. This keeps the codebase small, auditable, and
-easy to extend without introducing unnecessary abstraction.
-
-### Design Principles
-
-- **Prompt is data, not code.** Editing behavior means editing a `.txt`
-  file, never touching Python.
-- **One module, one responsibility.** The LLM call, the email send, and
-  the run orchestration are three separate files that don't know about
-  each other's internals.
-- **The OS owns scheduling.** The app has no concept of "when" - it just
-  runs once, correctly, when invoked. Task Scheduler decides when that
-  happens.
-- **Fail loudly, not silently.** A broken run should notify the user by
-  email, not just vanish into a log file nobody checks.
-- **No premature abstraction.** Multi-prompt and multi-schedule support
-  (see Section 8) are deferred until the single-prompt case is proven, not
-  designed in from day one.
-
-## 3. Out of Scope (Explicit Non-Goals)
-
-- No IMAP/email-reading capability. This app only sends email; it does
-  not read any inbox. (A separate concern from the author's existing
-  agentic job-search pipeline, which does read email via IMAP.)
-- No web-browsing or tool-use capability in the initial build. If a
-  prompt references a live URL, it will be answered from the model's
-  training data unless the web-search tool is explicitly added later
-  (see Section 8).
-- No database, no persistent state between runs, no conversation history.
-- No user interface. Configuration is done by editing `.env` and prompt
-  `.txt` files directly.
-- No multi-user support. Single operator, single mailbox.
-
-## 4. File Hierarchy
+## File Hierarchy
 
 ```
 scheduled-prompt-runner/
-├── runner.py                  # Entry point / orchestration
-├── llm_client.py               # Anthropic API wrapper
-├── emailer.py                  # SMTP email wrapper
-├── run_prompt.bat              # Task Scheduler launcher
-├── create_scheduled_task.ps1   # One-time setup script for Task Scheduler
-├── requirements.txt            # Python dependencies
-├── .env                        # Real secrets (gitignored, never committed)
-├── .env.example                # Blank template for version control
+├── runner.py                          # Entry point / orchestration
+├── llm_client.py                      # Anthropic API wrapper (text + web search)
+├── emailer.py                         # SMTP email wrapper
+├── imap_client.py                     # IMAP inbox fetch wrapper (weekly task only)
+├── run_prompt.bat                     # Task Scheduler launcher (parameterized by task name)
+├── create_scheduled_task_daily.ps1    # Registers the daily task
+├── create_scheduled_task_weekly.ps1   # Registers the weekly task
+├── create_scheduled_task_monthly.ps1  # Registers the monthly task (see note below)
+├── requirements.txt
+├── .env                                # Real secrets (gitignored)
+├── .env.example                        # Blank template for version control
 ├── .gitignore
-├── README.md                   # This document, or a condensed version of it
+├── README.md
 ├── prompts/
-│   └── prompt_current.txt      # The active prompt (data, not code)
+│   ├── prompt_daily.txt
+│   ├── prompt_weekly.txt
+│   └── prompt_monthly.txt
 └── output/
-    └── output_YYYY-MM-DD.md    # Timestamped run results (gitignored)
+    └── output_<task>_<date>.md         # Timestamped run results (gitignored)
 ```
 
-## 5. Module Specifications
+`prompt_current.txt` from the original single-prompt design has been
+retired - each task now has its own dedicated prompt file, selected by a
+required command-line argument to `runner.py`.
 
-### 5.1 `runner.py` (orchestration)
+## Module Specifications
 
-**Responsibility:** Coordinate the run. Contains no prompt logic, no API
-details, no email details.
+### `runner.py`
 
-**Behavior:**
+Orchestration only. Usage: `python runner.py <daily|weekly|monthly>`.
+Loads the matching prompt file, injects live data where needed (see
+`build_prompt()`), calls the LLM, saves output, and emails the result
+unless the response is exactly `NO_UPDATE`. Logs every step via a
+`TimedRotatingFileHandler` capped at 122 days of history.
 
-1. Load environment variables from `.env`.
-2. Read the prompt text from `prompts/prompt_current.txt`. Fail clearly if
-   missing or empty.
-3. Pass the prompt text to `llm_client` and receive the response text.
-4. Save the response to `output/output_<date>.md`.
-5. Check the response for a `NO_UPDATE` sentinel (see Section 7). If
-   present, log and exit without emailing.
-6. Otherwise, pass the response to `emailer` to send.
-7. Log every step (start, prompt loaded, response received, output saved,
-   email sent) to both console and a log file, so unattended runs are
-   auditable after the fact.
-8. On any exception: log the full error, attempt to send a
-   failure-notification email, and exit with a non-zero status code (so
-   Task Scheduler can be configured to detect failed runs).
+### `llm_client.py`
 
-### 5.2 `llm_client.py` (Claude API wrapper)
+Thin Anthropic API wrapper. `get_claude_response(prompt_text,
+enable_web_search=False, allowed_domains=None)`. When web search is
+enabled, results are restricted to an explicit domain allowlist -
+accuracy from a small number of trusted, first-party sources rather than
+open web search. Model: `claude-sonnet-5`. Web search costs $10 per 1,000
+searches on top of standard token cost; negligible at this run frequency.
 
-**Responsibility:** Send one prompt, get one text response back. No
-orchestration, no email logic.
+### `emailer.py`
 
-**Behavior:**
+Thin SMTP wrapper. Sends via `mail.ai-yyc.com:587` with STARTTLS.
 
-- Read the API key from the environment.
-- Call the Anthropic Messages API with the given prompt as a single user
-  message.
-- Use the current generally-available Sonnet model (confirm the exact
-  model string against Anthropic's docs at build time, as this changes
-  over time).
-- Extract and return only the text content of the response.
-- Translate connection errors, API error statuses, and empty responses
-  into clear, distinct exceptions the caller can log meaningfully.
+### `imap_client.py`
 
-### 5.3 `emailer.py` (SMTP wrapper)
+Thin IMAP wrapper, used only by the weekly task.
+`fetch_weekly_emails()` connects to the Inbox, fetches everything
+received since last Sunday (no sender/subject filtering), and returns a
+formatted text blob for injection into the weekly prompt. Each email body
+is capped at 2,000 characters to bound prompt size.
 
-**Responsibility:** Send one email. No prompt logic, no orchestration.
+## Known Issues / Gotchas
 
-**Behavior:**
+- **PowerShell's `ScheduledTasks` module cannot reliably create monthly
+  triggers.** `New-ScheduledTaskTrigger` has no monthly parameter set at
+  all, and working around it via CIM `MSFT_TaskMonthlyTrigger` objects
+  hits a documented, unresolved PowerShell bug
+  (github.com/PowerShell/PowerShell/issues/24651) that produces a
+  misleading "user name or password is incorrect" error unrelated to
+  actual credentials. `create_scheduled_task_monthly.ps1` works around
+  this by using `schtasks.exe` directly instead of the PowerShell
+  cmdlets. Tradeoff: the monthly task doesn't have the
+  WakeToRun/restart-on-failure settings the daily and weekly tasks have,
+  since schtasks.exe doesn't expose them. Acceptable here since the
+  target machine never sleeps and is always on AC power - the only real
+  loss is automatic retry if a single monthly run fails.
+- **Web search tool respects target sites' robots.txt / crawler
+  policies.** Several mainstream news domains (Reuters, The Verge)
+  reject Anthropic's crawler outright, which surfaces as a 400 error
+  from the API, not a silent failure. The daily task is restricted to
+  first-party company domains (`anthropic.com`, `openai.com`) partly for
+  accuracy, partly to sidestep this entirely.
+- **VS Code's integrated terminal must have the venv interpreter
+  selected** (`Python: Select Interpreter` → the `.\venv\Scripts\python.exe`
+  entry) for new terminals to auto-activate. Existing open terminals
+  don't retroactively activate - open a fresh one after selecting.
+- **Elevated PowerShell opens in `C:\Windows\system32` by default**, not
+  wherever your other terminal was. Always `cd` into the project
+  directory first when running any of the `create_scheduled_task_*.ps1`
+  scripts from an Administrator prompt.
 
-- Read SMTP host, port, username, password, and recipient from the
-  environment. Fail clearly if any required setting is missing.
-- Compose a plain-text (or markdown-as-text) email with the given subject
-  and body.
-- Optionally attach the saved output file.
-- Send via `smtplib` with STARTTLS.
+## Dependencies
 
-### 5.4 `run_prompt.bat` (Task Scheduler launcher)
+| Dependency             | Purpose                                                             |
+| ---------------------- | ------------------------------------------------------------------- |
+| Python 3.11+           | Runtime                                                             |
+| `anthropic`            | Claude API access, including the web search tool                    |
+| `python-dotenv`        | Loads `.env` into environment variables                             |
+| Windows Task Scheduler | OS-level scheduling                                                 |
+| SMTP mailbox           | `mail.ai-yyc.com:587` (STARTTLS) - outbound email for all tasks     |
+| IMAP mailbox           | `mail.ai-yyc.com:993` (SSL) - inbound read access, weekly task only |
 
-A minimal batch script that changes to the project directory and invokes
-the Python interpreter on `runner.py`, redirecting output to a log file.
-This is the only thing Task Scheduler needs to know how to run.
+## Setup
 
-### 5.5 `create_scheduled_task.ps1` (setup script)
+1. `python -m venv venv` (from a **non-elevated** terminal), then
+   `.\venv\Scripts\Activate.ps1`.
+2. `pip install -r requirements.txt`.
+3. Copy `.env.example` to `.env` and fill in real values: Anthropic API
+   key, SMTP credentials, IMAP credentials.
+4. Test each task manually before scheduling anything:
+   ```
+   python runner.py daily
+   python runner.py weekly
+   python runner.py monthly
+   ```
+5. From an **elevated** PowerShell (remember to `cd` into the project
+   directory first), run each scheduler script once:
+   ```
+   powershell -ExecutionPolicy Bypass -File .\create_scheduled_task_daily.ps1
+   powershell -ExecutionPolicy Bypass -File .\create_scheduled_task_weekly.ps1
+   powershell -ExecutionPolicy Bypass -File .\create_scheduled_task_monthly.ps1
+   ```
+6. Verify all three in Task Scheduler (`taskschd.msc`), and test each
+   on-demand with `Start-ScheduledTask -TaskName "<name>"` before
+   trusting the real schedule.
 
-A one-time PowerShell script (run manually, as Administrator) that
-registers the Windows Scheduled Task: sets the trigger (day/time),
-points the action at `run_prompt.bat`, and configures settings such as
-retry behavior and execution time limit. Not part of the running
-application - a setup utility only.
+## Planned: Phase 3
 
-## 6. Dependencies
+Chain multiple prompts within a single scheduled task (e.g. a monthly
+task running both the deprecation check and a second, unrelated prompt).
+No changes to `runner.py` expected - each invocation stays a fully
+independent, stateless run. Likely implementation: `run_prompt.bat`
+calling `runner.py` multiple times in sequence, one call per prompt.
 
-| Dependency                        | Purpose                                         |
-| --------------------------------- | ----------------------------------------------- |
-| Python 3.11+                      | Runtime                                         |
-| `anthropic` (official Python SDK) | Claude API access                               |
-| `python-dotenv`                   | Loads `.env` into environment variables         |
-| Windows Task Scheduler            | OS-level scheduling (no Python dependency)      |
-| SMTP-capable email account        | Outbound mail (e.g. Gmail with an App Password) |
-| Anthropic API key                 | Required credential                             |
+## Security Notes
 
-No database, no web framework, no message queue, no containerization
-needed for this scope.
-
-## 7. Key Conventions
-
-- **`.env` for all secrets.** Never hardcode API keys, passwords, or email
-  addresses in source files. `.env` is gitignored; `.env.example` ships
-  with blank values as a template for whoever sets this up next.
-- **`NO_UPDATE` sentinel.** Any prompt can opt into "only email me if
-  there's something to report" by instructing the model to respond with
-  the exact string `NO_UPDATE` when there's nothing new. `runner.py`
-  checks for this prefix and skips the email (but still logs and saves
-  the output) when present. This keeps the "what counts as noteworthy"
-  logic in the prompt text, not in Python.
-- **One prompt file per distinct job.** Don't overload a single prompt
-  file with multiple unrelated tasks - see Section 8 for how multiple
-  prompts are intended to scale.
-
-## 8. Planned Extension Points (Not Built Initially)
-
-These are documented so a future developer understands the intended
-growth path and doesn't need to redesign the architecture to support
-them:
-
-- **Multiple prompts, independent schedules.** `runner.py` should accept
-  the prompt file path as a command-line argument (defaulting to
-  `prompts/prompt_current.txt` if omitted), and output filenames should
-  incorporate the prompt name, not just the date, so same-day runs from
-  different prompts don't collide. Each schedule (daily/weekly/monthly)
-  becomes its own Task Scheduler task pointing at its own prompt file.
-- **Multiple prompts per single schedule.** A `.bat` file (or a single
-  Task Scheduler task with multiple actions) can invoke `runner.py`
-  multiple times in sequence, once per prompt file. No changes to
-  `runner.py` itself are required for this - each invocation remains a
-  fully independent, stateless run.
-- **Live web access.** Prompts that reference URLs or need current
-  information require the web-search tool to be added to the API call in
-  `llm_client.py`. Without it, such prompts will be answered from the
-  model's training data, which may be stale.
-- **Reading email (IMAP).** Any prompt requiring inbox content (e.g. "summarize
-  yesterday's emails") needs a new IMAP-ingestion module. This is a
-  materially larger addition than the scheduling changes above and should
-  be scoped as its own phase.
-- **Combined/digest emails.** If multiple prompts run on one schedule and
-  separate emails become undesirable, `runner.py` would need to be
-  refactored to batch multiple prompt/response pairs into a single email
-  send, rather than one send per prompt.
-
-## 9. Suggested Build Phases
-
-1. **Phase 1 - Core loop.** Build all five files above for a single
-   prompt. Test manually (`python runner.py`) until a real email arrives
-   correctly. Then schedule it and confirm at least one successful
-   unattended run before considering it done.
-2. **Phase 2 - Multiple schedules.** Add the CLI-argument support for
-   prompt file selection. Create additional prompt files and additional
-   scheduled tasks, each on its own cadence. Test and confirm each
-   independently.
-3. **Phase 3 - Multiple prompts per schedule.** Chain multiple `runner.py`
-   invocations within a single `.bat` file or Task Scheduler task. No
-   Python changes required.
-
-## 10. Security Notes for Whoever Builds This
-
-- Store the API key and email password only in `.env`; verify `.env` is
-  in `.gitignore` _before_ the first `git add`, not after.
-- Use an app-specific password for the sending email account rather than
-  the account's main password, if the provider supports it (e.g. Gmail
-  App Passwords).
-- If flipping a repository containing this code from private to public,
-  check the full git history for accidental secret commits first -
+- `.env` holds real secrets and is gitignored. Verify `.gitignore` exists
+  and lists `.env` _before_ the first `git add` in any fresh clone.
+- If this repository is ever made public, check `git log --all
+--full-history -- .env` first to confirm it was never committed -
   removing a file in a later commit does not remove it from history.
