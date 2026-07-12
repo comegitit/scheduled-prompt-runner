@@ -1,0 +1,14 @@
+Search the web for notable news from the last 24 hours specifically about
+Anthropic and OpenAI - product launches, model releases, policy changes,
+outages, or major announcements.
+
+For each item, report: what happened, which company, and the source. Give
+me 3-5 bullet points, each 1-2 sentences.
+
+Cross-check and verify all sources as correct before providing any output.
+There is zero tolerance for hallucination - if you cannot confirm a claim
+from a credible source, leave it out rather than include it.
+
+If there is genuinely nothing notable in the last 24 hours, respond with
+exactly:
+NO_UPDATE
