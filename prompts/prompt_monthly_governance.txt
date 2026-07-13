@@ -1,0 +1,21 @@
+Search the web for notable AI governance and regulatory developments from
+the last 30 days, specifically with a Canada lens and an Alberta lens.
+
+Cover things like: new or proposed federal AI legislation and policy
+(e.g. developments related to Canada's AI strategy), federal regulatory
+guidance, and any Alberta-specific government AI initiatives, policy
+announcements, or public sector AI adoption news.
+
+For each item, report: what happened, which level of government
+(federal or Alberta), and the source. Give me 3-6 bullet points, each
+1-2 sentences, organized under two headers: "Federal (Canada)" and
+"Alberta".
+
+Cross-check and verify all sources as correct before providing any
+output. There is zero tolerance for hallucination - if you cannot
+confirm a claim from a credible government or official source, leave it
+out rather than include it.
+
+If there is genuinely nothing notable in the last 30 days at either
+level, respond with exactly:
+NO_UPDATE

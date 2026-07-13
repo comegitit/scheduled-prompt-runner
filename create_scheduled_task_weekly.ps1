@@ -9,14 +9,14 @@
 
 $TaskName = "ScheduledPromptRunner_Weekly"
 $ProjectDir = "C:\Projects\scheduled-prompt-runner"
-$BatchFile = Join-Path $ProjectDir "run_prompt.bat"
+$WrapperBatch = Join-Path $ProjectDir "run_weekly_tasks.bat"
 
-if (-not (Test-Path $BatchFile)) {
-    Write-Error "Could not find $BatchFile. Update `$ProjectDir` in this script, or check your folder structure."
+if (-not (Test-Path $WrapperBatch)) {
+    Write-Error "Could not find $WrapperBatch. Update `$ProjectDir` in this script, or check your folder structure."
     exit 1
 }
 
-$Action = New-ScheduledTaskAction -Execute $BatchFile -Argument "weekly" -WorkingDirectory $ProjectDir
+$Action = New-ScheduledTaskAction -Execute $WrapperBatch -WorkingDirectory $ProjectDir
 
 $Trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 5:30AM
 

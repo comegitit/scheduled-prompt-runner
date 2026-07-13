@@ -2,18 +2,29 @@
 runner.py - Entry point for Scheduled Prompt Runner.
 
 Usage:
-    python runner.py daily
-    python runner.py weekly
-    python runner.py monthly
+    python runner.py <task> <variant>
+
+Examples:
+    python runner.py daily news
+    python runner.py weekly inbox
+    python runner.py monthly deprecation
+    python runner.py monthly governance
+
+Each (task, variant) pair maps to prompts/prompt_<task>_<variant>.txt.
+A single scheduled task can chain multiple variants by invoking this
+script multiple times (see run_prompt.bat and run_monthly_tasks.bat) -
+each invocation is a fully independent, stateless run. runner.py itself
+has no knowledge of chaining; that lives entirely at the .bat/Task
+Scheduler level.
 
 Workflow:
 1. Load environment variables from .env
-2. Read prompts/prompt_<task>.txt
-3. For "weekly": fetch Inbox emails since last Sunday via imap_client and
-   append them to the prompt before sending. Other tasks send the prompt
-   file as-is (web-tool wiring for daily/monthly comes in a later change).
-4. Call Claude via llm_client
-5. Save response as output/output_<task>_<date>.md
+2. Read prompts/prompt_<task>_<variant>.txt
+3. For task "weekly": fetch Inbox emails since last Sunday via
+   imap_client and append them to the prompt before sending.
+4. For web-search-enabled variants: call Claude with web search enabled,
+   restricted to a per-variant domain allowlist.
+5. Save response as output/output_<task>_<variant>_<date>.md
 6. If response starts with the NO_UPDATE sentinel, skip email
 7. Otherwise email the response via emailer
 
@@ -22,6 +33,7 @@ email-sending details live in emailer.py, IMAP details live in
 imap_client.py.
 """
 
+import os
 import sys
 import logging
 from logging.handlers import TimedRotatingFileHandler
@@ -64,17 +76,49 @@ log = logging.getLogger(__name__)
 # prompt (data), not here (code).
 NO_UPDATE_SENTINEL = "NO_UPDATE"
 
+# Per-variant web search configuration. Variants not listed here get no
+# web search (e.g. "inbox", which uses IMAP-injected data instead).
+# Restricted to small, trusted domain lists - accuracy from a few
+# first-party sources over breadth from open search.
+WEB_SEARCH_CONFIG = {
+    "news": ["anthropic.com", "openai.com"],
+    "markets": ["nasdaqtrader.com", "tsx.com", "ir.thomsonreuters.com"],
+    "deprecation": ["docs.claude.com"],
+    "governance": ["canada.ca", "alberta.ca", "cigionline.org", "betakit.com"],
+}
 
-def parse_task_arg() -> str:
-    if len(sys.argv) != 2 or sys.argv[1] not in VALID_TASKS:
+# Per-variant IMAP account config for variants that need inbox content.
+# Each entry names the .env variables holding that account's connection
+# details - runner.py reads them and passes explicit values into
+# imap_client, which has no knowledge of .env or which account it's
+# talking to.
+IMAP_ACCOUNT_CONFIG = {
+    "inbox": {
+        "host_env": "IMAP_SERVER",
+        "port_env": "IMAP_PORT",
+        "email_env": "IMAP_EMAIL",
+        "password_env": "IMAP_PASSWORD",
+    },
+    "gmail": {
+        "host_env": "GMAIL_IMAP_SERVER",
+        "port_env": "GMAIL_IMAP_PORT",
+        "email_env": "GMAIL_IMAP_EMAIL",
+        "password_env": "GMAIL_IMAP_PASSWORD",
+    },
+}
+
+
+def parse_args() -> tuple[str, str]:
+    if len(sys.argv) != 3 or sys.argv[1] not in VALID_TASKS:
         raise ValueError(
-            f"Usage: python runner.py <task>, where <task> is one of {VALID_TASKS}"
+            f"Usage: python runner.py <task> <variant>, "
+            f"where <task> is one of {VALID_TASKS}"
         )
-    return sys.argv[1]
+    return sys.argv[1], sys.argv[2]
 
 
-def load_prompt(task: str) -> str:
-    prompt_file = PROMPTS_DIR / f"prompt_{task}.txt"
+def load_prompt(task: str, variant: str) -> str:
+    prompt_file = PROMPTS_DIR / f"prompt_{task}_{variant}.txt"
     if not prompt_file.exists():
         raise FileNotFoundError(f"Prompt file not found: {prompt_file}")
     text = prompt_file.read_text(encoding="utf-8").strip()
@@ -83,23 +127,31 @@ def load_prompt(task: str) -> str:
     return text
 
 
-def build_prompt(task: str, base_prompt: str) -> str:
+def build_prompt(variant: str, base_prompt: str) -> str:
     """
-    Combine the static prompt with any task-specific injected data.
-    Weekly needs live inbox content; daily/monthly are sent as-is for now.
+    Combine the static prompt with any variant-specific injected data.
+    IMAP-backed variants (see IMAP_ACCOUNT_CONFIG) get live inbox content
+    appended; other variants are sent as-is (web search, if configured,
+    is applied separately in main()).
     """
-    if task == "weekly":
-        log.info("Fetching inbox emails since last Sunday for weekly task.")
-        emails_text = fetch_weekly_emails()
+    imap_config = IMAP_ACCOUNT_CONFIG.get(variant)
+    if imap_config:
+        host = os.getenv(imap_config["host_env"])
+        port = int(os.getenv(imap_config["port_env"], "993"))
+        username = os.getenv(imap_config["email_env"])
+        password = os.getenv(imap_config["password_env"])
+
+        log.info("Fetching inbox emails since last Sunday for %s account.", variant)
+        emails_text = fetch_weekly_emails(host, port, username, password)
         log.info("Fetched email content (%d characters).", len(emails_text))
         return f"{base_prompt}\n\n---\n\nEmails:\n\n{emails_text}"
     return base_prompt
 
 
-def save_output(task: str, response_text: str) -> Path:
+def save_output(task: str, variant: str, response_text: str) -> Path:
     OUTPUT_DIR.mkdir(exist_ok=True)
     today = datetime.now().strftime("%Y-%m-%d")
-    output_path = OUTPUT_DIR / f"output_{task}_{today}.md"
+    output_path = OUTPUT_DIR / f"output_{task}_{variant}_{today}.md"
     output_path.write_text(response_text, encoding="utf-8")
     return output_path
 
@@ -112,38 +164,36 @@ def main() -> int:
     load_dotenv(BASE_DIR / ".env")
 
     try:
-        task = parse_task_arg()
-        log.info("Starting scheduled prompt run: task=%s", task)
+        task, variant = parse_args()
+        log.info("Starting scheduled prompt run: task=%s variant=%s", task, variant)
 
-        base_prompt = load_prompt(task)
-        log.info("Loaded prompt_%s.txt (%d characters).", task, len(base_prompt))
+        base_prompt = load_prompt(task, variant)
+        log.info(
+            "Loaded prompt_%s_%s.txt (%d characters).", task, variant, len(base_prompt)
+        )
 
-        full_prompt = build_prompt(task, base_prompt)
+        full_prompt = build_prompt(variant, base_prompt)
 
-        # Daily and monthly need live web data; weekly already has live
-        # data injected from the inbox and doesn't need it. Restricted to
-        # a small set of authoritative domains rather than open web
-        # search - accuracy from fewer sources over breadth from many.
-        DOMAIN_ALLOWLIST = {
-            "daily": ["anthropic.com", "openai.com"],
-            "monthly": ["docs.claude.com"],
-        }
-        use_web_search = task in ("daily", "monthly")
+        allowed_domains = WEB_SEARCH_CONFIG.get(variant)
+        use_web_search = allowed_domains is not None
         response_text = get_claude_response(
             full_prompt,
             enable_web_search=use_web_search,
-            allowed_domains=DOMAIN_ALLOWLIST.get(task),
+            allowed_domains=allowed_domains,
         )
         log.info("Received response from Claude (%d characters).", len(response_text))
 
-        output_path = save_output(task, response_text)
+        output_path = save_output(task, variant, response_text)
         log.info("Saved output to %s", output_path)
 
         if is_no_update(response_text):
             log.info("Response indicates no update. Skipping email.")
             return 0
 
-        subject = f"Scheduled Prompt Result ({task}) - {datetime.now().strftime('%Y-%m-%d')}"
+        subject = (
+            f"Scheduled Prompt Result ({task}/{variant}) - "
+            f"{datetime.now().strftime('%Y-%m-%d')}"
+        )
         send_email(subject=subject, body=response_text, attachment_path=output_path)
         log.info("Email sent successfully. Run complete.")
         return 0

@@ -1,0 +1,20 @@
+Search the web for the current Anthropic Claude model deprecation and
+retirement schedule. The authoritative source is
+https://docs.claude.com/en/docs/about-claude/models/deprecations - prioritize
+that page over any secondary or aggregator source.
+
+Report any deprecation or retirement announcements dated within the last
+30 days. For each one, summarize in 2-3 sentences covering:
+- which model
+- the announcement date
+- the deprecation date
+- the retirement date
+- the recommended replacement model
+
+Cross-check and verify all sources as correct before providing any output.
+There is zero tolerance for hallucination - if you cannot confirm a date
+or model name from the authoritative source, do not guess or approximate
+it; state that it could not be confirmed instead.
+
+If there are no announcements in that window, respond with exactly:
+NO_UPDATE

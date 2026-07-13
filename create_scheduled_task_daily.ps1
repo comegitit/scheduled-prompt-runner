@@ -9,14 +9,14 @@
 
 $TaskName = "ScheduledPromptRunner_Daily"
 $ProjectDir = "C:\Projects\scheduled-prompt-runner"
-$BatchFile = Join-Path $ProjectDir "run_prompt.bat"
+$WrapperBatch = Join-Path $ProjectDir "run_daily_tasks.bat"
 
-if (-not (Test-Path $BatchFile)) {
-    Write-Error "Could not find $BatchFile. Update `$ProjectDir` in this script, or check your folder structure."
+if (-not (Test-Path $WrapperBatch)) {
+    Write-Error "Could not find $WrapperBatch. Update `$ProjectDir` in this script, or check your folder structure."
     exit 1
 }
 
-$Action = New-ScheduledTaskAction -Execute $BatchFile -Argument "daily" -WorkingDirectory $ProjectDir
+$Action = New-ScheduledTaskAction -Execute $WrapperBatch -WorkingDirectory $ProjectDir
 
 $Trigger = New-ScheduledTaskTrigger -Daily -At 5:00AM
 

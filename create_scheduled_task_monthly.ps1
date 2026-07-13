@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
     Registers a Windows Scheduled Task that runs the Scheduled Prompt
-    Runner's MONTHLY prompt at 6:00 AM on the 1st of every month.
+    Runner's MONTHLY prompts at 6:00 AM on the 1st of every month.
 
 .NOTES
     Run this from an elevated (Administrator) PowerShell prompt.
@@ -22,26 +22,26 @@
     schtasks.exe supports monthly triggers natively and correctly, so
     this script uses it exclusively. The tradeoff: schtasks.exe doesn't
     expose the extra settings (WakeToRun, restart-on-failure) that the
-    daily/weekly scripts set via New-ScheduledTaskSettingsSet. This is
-    an acceptable tradeoff here since the laptop this runs on never
-    sleeps (making WakeToRun a no-op anyway) and is always on AC power
-    (making battery settings irrelevant). The only real loss is
-    automatic retry if a run fails - a minor gap for a monthly task.
+    daily/weekly scripts set via New-ScheduledTaskSettingsSet. Acceptable
+    here since the target machine never sleeps and is always on AC power.
+
+    This task's action points at run_monthly_tasks.bat, which chains
+    both monthly prompts (deprecation, governance) in sequence.
 #>
 
 $TaskName = "ScheduledPromptRunner_Monthly"
 $ProjectDir = "C:\Projects\scheduled-prompt-runner"
-$BatchFile = Join-Path $ProjectDir "run_prompt.bat"
+$WrapperBatch = Join-Path $ProjectDir "run_monthly_tasks.bat"
 
-if (-not (Test-Path $BatchFile)) {
-    Write-Error "Could not find $BatchFile. Update `$ProjectDir` in this script, or check your folder structure."
+if (-not (Test-Path $WrapperBatch)) {
+    Write-Error "Could not find $WrapperBatch. Update `$ProjectDir` in this script, or check your folder structure."
     exit 1
 }
 
 $Credential = Get-Credential -Message "Enter your Windows account password (needed so the task can run when you're logged off or the laptop is locked)"
 $PlainPassword = $Credential.GetNetworkCredential().Password
 
-$TaskRun = "`"$BatchFile`" monthly"
+$TaskRun = "`"$WrapperBatch`""
 
 $schtasksArgs = @(
     "/create",
@@ -66,8 +66,6 @@ if ($schtasksExitCode -ne 0) {
     exit 1
 }
 
-# Verify via Get-ScheduledTask - this read-only call is safe; it's only
-# writing monthly triggers back through the module that hits the bug.
 try {
     $Verify = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
     Write-Host ""

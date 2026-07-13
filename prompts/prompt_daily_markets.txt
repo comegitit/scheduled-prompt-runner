@@ -1,0 +1,15 @@
+Search the web for notable financial market news from the last 24 hours,
+covering major North American markets and indices - S&P 500, NASDAQ,
+NYSE, and TSX.
+
+For each item, report: what happened, which market or index, and the
+source. Give me 3-5 bullet points, each 1-2 sentences.
+
+Cross-check and verify all sources as correct before providing any
+output. There is zero tolerance for hallucination - if you cannot
+confirm a claim from a credible source, leave it out rather than
+include it.
+
+If there is genuinely nothing notable in the last 24 hours, respond with
+exactly:
+NO_UPDATE

@@ -7,7 +7,6 @@ blob (sender / date / subject / body) for inclusion in a prompt. No
 prompt logic, no orchestration, no email-sending logic (that's emailer.py).
 """
 
-import os
 import imaplib
 import email
 from email.header import decode_header
@@ -64,29 +63,28 @@ def get_last_sunday() -> datetime:
     return last_sunday.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def fetch_weekly_emails() -> str:
+def fetch_weekly_emails(host: str, port: int, username: str, password: str) -> str:
     """
     Fetch all Inbox emails received since last Sunday. No sender/subject
     filtering - returns everything. Returns a formatted text blob ready
     to append to a prompt, or a plain "no emails" message if the inbox
     is empty for that window.
-    """
-    host = os.getenv("IMAP_SERVER")
-    port = int(os.getenv("IMAP_PORT", "993"))
-    username = os.getenv("IMAP_EMAIL")
-    password = os.getenv("IMAP_PASSWORD")
 
+    Connection details are passed in explicitly rather than read from
+    .env here, so this function works against any mailbox - the caller
+    (runner.py) decides which account's credentials to supply.
+    """
     missing = [
         name
         for name, val in [
-            ("IMAP_SERVER", host),
-            ("IMAP_EMAIL", username),
-            ("IMAP_PASSWORD", password),
+            ("host", host),
+            ("username", username),
+            ("password", password),
         ]
         if not val
     ]
     if missing:
-        raise RuntimeError(f"Missing required IMAP settings in .env: {', '.join(missing)}")
+        raise RuntimeError(f"Missing required IMAP connection details: {', '.join(missing)}")
 
     since_date = get_last_sunday()
     imap_date = since_date.strftime("%d-%b-%Y")  # IMAP SEARCH format, e.g. 06-Jul-2026

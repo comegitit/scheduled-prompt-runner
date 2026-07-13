@@ -1,0 +1,12 @@
+Summarize the emails listed below, which were received in the roy@ai-yyc.com
+inbox since last Sunday. Group the summary by sender. For each sender,
+give a short summary of what they sent and flag anything that appears to
+require action or a reply.
+
+Cross-check and verify all sources as correct before providing any output
+(if applicable to the content below). There is zero tolerance for
+hallucination - only summarize what is actually present in the emails
+below, never infer or invent details that aren't there.
+
+If the email list below says there are no emails, respond with exactly:
+NO_UPDATE
