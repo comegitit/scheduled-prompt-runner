@@ -107,6 +107,23 @@ IMAP_ACCOUNT_CONFIG = {
     },
 }
 
+# Human-readable, title-cased labels for email subjects, keyed by
+# (task, variant). Falls back to a generic "<Task>/<Variant>" label for
+# any pair not listed here, so a new variant never breaks email sending
+# even if this table isn't updated immediately.
+SUBJECT_LABELS = {
+    ("daily", "news"): "Daily/LLM Vendor News",
+    ("daily", "markets"): "Daily/Financial Markets",
+    ("weekly", "inbox"): "Weekly/AI-YYC Inbox",
+    ("weekly", "gmail"): "Weekly/Gmail Inbox",
+    ("monthly", "deprecation"): "Monthly/Anthropic Model Deprecation",
+    ("monthly", "governance"): "Monthly/Canada & Alberta Governance News",
+}
+
+
+def get_subject_label(task: str, variant: str) -> str:
+    return SUBJECT_LABELS.get((task, variant), f"{task.title()}/{variant.title()}")
+
 
 def parse_args() -> tuple[str, str]:
     if len(sys.argv) != 3 or sys.argv[1] not in VALID_TASKS:
@@ -191,7 +208,7 @@ def main() -> int:
             return 0
 
         subject = (
-            f"Scheduled Prompt Result ({task}/{variant}) - "
+            f"Scheduled Prompt Result ({get_subject_label(task, variant)}) - "
             f"{datetime.now().strftime('%Y-%m-%d')}"
         )
         send_email(subject=subject, body=response_text, attachment_path=output_path)
